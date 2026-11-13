@@ -12,8 +12,8 @@ overlay come from [localization_core](external/localization_core), included as a
 git submodule. its sibling project, `gnss_imu_prediction`, estimates and
 predicts the drone's position from its own gps and imu.
 
-guides: [getting started](docs/getting-started.html) ·
-[how it works](docs/how-it-works.html)
+guides: [getting started](https://ulastanersoyak.github.io/drone_localization/getting-started.html) ·
+[how it works](https://ulastanersoyak.github.io/drone_localization/how-it-works.html)
 
 ## layout
 

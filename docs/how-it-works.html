@@ -55,7 +55,7 @@ footer{margin-top:60px;color:var(--muted);font-size:13px;border-top:1px solid va
 <div class="repo">drone_localization</div>
 <h1>How it works</h1>
 <p class="lede">Locating a drone from a pole with UWB range and a camera bearing, fused in a Kalman filter.</p>
-<nav class="pages"><a href="getting-started.html">getting started</a><a href="how-it-works.html" class="here">how it works</a><a href="../README.md">readme</a></nav>
+<nav class="pages"><a href="getting-started.html">getting started</a><a href="how-it-works.html" class="here">how it works</a><a href="https://github.com/ulastanersoyak/drone_localization">source on github</a></nav>
 </header>
 <p>The idea: a pole beside the flight area knows <b>how far</b> the drone is (UWB ranging between an anchor on the pole and a tag on the drone) and <b>in which direction</b> it is (a camera on the pole, with a neural network finding the drone in the image). Distance + direction = a 3D point, measured from the ground with no GPS needed. A Kalman filter turns those noisy, delayed points into a smooth track and can add the drone's own IMU and GPS when they are available.</p>
 
