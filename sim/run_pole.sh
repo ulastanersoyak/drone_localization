@@ -7,6 +7,10 @@
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
+if [[ ! -f $root/external/gnss-imu-fusion/CMakeLists.txt ]]; then
+  echo "external/gnss-imu-fusion is empty, run: git submodule update --init" >&2
+  exit 1
+fi
 build=$root/build-sim
 
 headless=false
@@ -22,7 +26,7 @@ fi
 
 cmake -S "$root" -B "$build" -DCMAKE_BUILD_TYPE=Release >/dev/null
 cmake --build "$build" -j --target pole_tracking_sim AccuracyOverlay
-export GZ_GUI_PLUGIN_PATH="$build/sim${GZ_GUI_PLUGIN_PATH:+:$GZ_GUI_PLUGIN_PATH}"
+export GZ_GUI_PLUGIN_PATH="$build/gz_gui_plugins${GZ_GUI_PLUGIN_PATH:+:$GZ_GUI_PLUGIN_PATH}"
 . "$root/sim/detector/env.sh"
 
 # The camera needs a display even without the Gazebo window: headless EGL
@@ -33,7 +37,7 @@ else
   # The shared GUI layout plus a panel with what YOLO sees, drawn by detect.py.
   # Its topic picker can switch it to the raw /pole/camera feed.
   gui_config=$build/pole_gui.config
-  cat "$root/sim/gui.config" - >"$gui_config" <<'XML'
+  cat "$root/external/gnss-imu-fusion/sim/gui.config" - >"$gui_config" <<'XML'
 
 <plugin filename="ImageDisplay" name="YOLO detections">
   <gz-gui>

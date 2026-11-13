@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How it works · drone_localization</title>
+<style>
+:root{--bg:#fbfaf8;--fg:#1d1d1f;--muted:#5f6368;--line:#e3e1dc;--card:#ffffff;
+--code:#f2f0ec;--accent:#c2410c;--accent2:#1d4ed8;--ok:#15803d;--warn:#b45309}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#141416;--fg:#e8e6e3;
+--muted:#a1a1aa;--line:#2c2c31;--card:#1c1c20;--code:#232328;--accent:#fb923c;--accent2:#60a5fa;
+--ok:#4ade80;--warn:#fbbf24}}
+:root[data-theme="dark"]{--bg:#141416;--fg:#e8e6e3;--muted:#a1a1aa;--line:#2c2c31;--card:#1c1c20;
+--code:#232328;--accent:#fb923c;--accent2:#60a5fa;--ok:#4ade80;--warn:#fbbf24}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:860px;margin:0 auto;padding:32px 16px 80px}
+header.top{border-bottom:1px solid var(--line);padding-bottom:20px;margin-bottom:28px}
+.repo{font:600 13px/1 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--accent);letter-spacing:.04em}
+h1{font-size:2rem;line-height:1.2;margin:.35em 0 .3em}
+.lede{color:var(--muted);font-size:1.08rem;margin:0}
+nav.pages{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+nav.pages a{font-size:14px;padding:4px 12px;border:1px solid var(--line);border-radius:999px;text-decoration:none;color:var(--fg)}
+nav.pages a.here{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+h2{font-size:1.4rem;margin:2.2em 0 .5em;padding-top:.2em}
+h3{font-size:1.08rem;margin:1.6em 0 .4em}
+a{color:var(--accent2)}
+code{font:0.88em ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--code);padding:.1em .35em;border-radius:4px}
+pre{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:14px 16px;overflow-x:auto;line-height:1.5}
+pre code{background:none;padding:0;font-size:13.5px}
+table{border-collapse:collapse;width:100%;font-size:14.5px;margin:1em 0;display:block;overflow-x:auto}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-weight:600;color:var(--muted);font-size:13px;text-transform:lowercase}
+.steps{counter-reset:s;list-style:none;padding:0}
+.steps>li{counter-increment:s;position:relative;padding-left:44px;margin:0 0 22px}
+.steps>li::before{content:counter(s);position:absolute;left:0;top:0;width:30px;height:30px;border-radius:50%;
+background:var(--accent);color:var(--bg);font-weight:700;display:grid;place-items:center;font-size:14px}
+.note{border-left:3px solid var(--accent2);background:var(--card);padding:10px 14px;border-radius:0 8px 8px 0;margin:1em 0;font-size:15px}
+.note.warn{border-color:var(--warn)}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin:1em 0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.card h4{margin:0 0 6px;font-size:15px}
+.card p{margin:0;font-size:14.5px;color:var(--muted)}
+figure{margin:1.4em 0}
+figure img,figure svg{max-width:100%;height:auto;display:block;border-radius:8px;border:1px solid var(--line)}
+figcaption{color:var(--muted);font-size:14px;margin-top:6px}
+svg text{font-family:system-ui,sans-serif}
+.math{font-family:ui-monospace,Menlo,monospace;background:var(--code);padding:10px 14px;border-radius:8px;overflow-x:auto;white-space:pre;font-size:14px}
+footer{margin-top:60px;color:var(--muted);font-size:13px;border-top:1px solid var(--line);padding-top:16px}
+</style>
+</head>
+<body>
+<main>
+<header class="top">
+<div class="repo">drone_localization</div>
+<h1>How it works</h1>
+<p class="lede">Locating a drone from a pole with UWB range and a camera bearing, fused in a Kalman filter.</p>
+<nav class="pages"><a href="getting-started.html">getting started</a><a href="how-it-works.html" class="here">how it works</a><a href="../README.md">readme</a></nav>
+</header>
+<p>The idea: a pole beside the flight area knows <b>how far</b> the drone is (UWB ranging between an anchor on the pole and a tag on the drone) and <b>in which direction</b> it is (a camera on the pole, with a neural network finding the drone in the image). Distance + direction = a 3D point, measured from the ground with no GPS needed. A Kalman filter turns those noisy, delayed points into a smooth track and can add the drone's own IMU and GPS when they are available.</p>
+
+<figure>
+<svg viewBox="0 0 820 320" role="img" aria-label="pole with uwb range sphere and camera ray intersecting at the drone">
+<line x1="640" y1="300" x2="640" y2="150" stroke="var(--fg)" stroke-width="6"/>
+<rect x="622" y="134" width="36" height="22" rx="4" fill="var(--fg)"/>
+<path d="M370 280 A300 300 0 0 1 400 30" fill="none" stroke="var(--accent2)" stroke-width="2" stroke-dasharray="7 6"/>
+<line x1="625" y1="142" x2="250" y2="60" stroke="var(--accent)" stroke-width="2.5"/>
+<g transform="translate(355 84)"><circle r="10" fill="none" stroke="var(--ok)" stroke-width="3"/><line x1="-22" y1="0" x2="22" y2="0" stroke="var(--ok)" stroke-width="3"/><circle cx="-22" r="5" fill="var(--ok)"/><circle cx="22" r="5" fill="var(--ok)"/></g>
+<line x1="40" y1="300" x2="800" y2="300" stroke="var(--muted)"/>
+<g font-size="13" fill="var(--fg)">
+<text x="670" y="140">camera on pan-tilt</text><text x="670" y="158">+ uwb anchor</text>
+<text x="300" y="250" fill="var(--accent2)">uwb range sphere</text>
+<text x="440" y="96" fill="var(--accent)" transform="rotate(12 440 96)">camera ray from the yolo pixel</text>
+<text x="150" y="110" fill="var(--ok)">drone = pole + r · ray</text>
+</g>
+</svg>
+<figcaption>The range constrains the drone to a sphere around the pole and the bearing to a ray. Where they meet is the drone.</figcaption>
+</figure>
+
+<h2>the sensors</h2>
+<div class="cards">
+<div class="card"><h4>uwb range</h4><p>Time of flight between anchor and tag gives a distance. It is accurate in all directions but says nothing about direction. Simulated in the bridge from the true distance plus noise.</p></div>
+<div class="card"><h4>camera bearing</h4><p>YOLO finds the drone's pixel (u, v). The pinhole model turns the pixel into a unit ray in the world, using the pan-tilt pose at the instant of the frame. Accurate across the ray, blind along it.</p></div>
+<div class="card"><h4>imu (optional)</h4><p>The drone's own acceleration in ENU carries the state between pole measurements.</p></div>
+<div class="card"><h4>gps (optional)</h4><p>A noisy absolute position and horizontal velocity. Useful for initialization and as a sanity anchor.</p></div>
+</div>
+<p>The two pole sensors complement each other: UWB is good exactly where the camera is weak (distance along the ray) and vice versa.</p>
+
+<h2>the detector</h2>
+<ul>
+<li><b>Training data without labelling.</b> <code>make_dataset.py</code> saves frames from simulated flights. For each frame it projects the drone's true 3D bounding box through the same pinhole model the estimator uses, which gives a YOLO label for free.</li>
+<li><b>Live.</b> <code>detect.py</code> always takes the newest camera frame, so a slow model drops frames instead of falling behind. It publishes <code>"&lt;frame time&gt; &lt;u&gt; &lt;v&gt; &lt;confidence&gt;"</code> on <code>/pole/detection</code> and an annotated image for the GUI panel.</li>
+</ul>
+
+<h2>the filter</h2>
+<div class="math">x = [ x, y, z, v_x, v_y, v_z ]      local ENU frame of the world</div>
+<p>Same constant-velocity model and <code>kalman_filter&lt;6&gt;</code> core as the prediction project. IMU acceleration, when present, is the control input of the predict step. Each sensor is a separate update, and any subset works:</p>
+<table>
+<tr><th>update</th><th>measures</th><th>how</th></tr>
+<tr><td>range</td><td>1 value</td><td>r = ‖p − pole‖. Nonlinear, so it is linearized around the current estimate (an EKF step): H is the unit vector from the pole to the estimate.</td></tr>
+<tr><td>bearing</td><td>2 values</td><td>The sideways offset of the estimate from the camera ray, along two axes perpendicular to the ray. The noise is an angle, so the allowed sideways error grows with distance.</td></tr>
+<tr><td>gps</td><td>3 + 2 values</td><td>position and horizontal velocity, linear</td></tr>
+</table>
+<p>Every update is gated by its normalised innovation squared against a χ² threshold for its degrees of freedom, so a wrong detection (a bird, a reflection) is rejected instead of pulling the track away.</p>
+
+<h3>starting, recovering</h3>
+<ul>
+<li><b>Initialization:</b> the first detection that has a UWB range becomes <code>pole + r · ray</code>, or the first GPS fix when there is one.</li>
+<li><b>Recovery:</b> if many detections in a row are rejected, the bridge trusts them over the state and re-initializes from the raw range + ray point.</li>
+<li><b>Health:</b> if the state or covariance ever becomes non-finite (NaN/∞), the estimator reports unhealthy and is reset rather than freezing on garbage.</li>
+</ul>
+
+<h2>delays: fusing in timestamp order</h2>
+<p>A detection arrives late. YOLO needs time, but the frame was taken earlier, and applying it as if it were current would put the drone where it used to be. So every measurement (range, detection, IMU, GPS) goes into a buffer keyed by its <i>measurement</i> time. The filter runs a fixed <code>--latency</code> behind the simulation and consumes the buffer in time order, so each measurement is applied at the moment it was taken. Detections older than that window count as “late” and are dropped.</p>
+
+<h2>steering the camera</h2>
+<p>A fixed camera loses the drone as soon as it leaves the field of view. The pan-tilt mount is steered toward the <b>filter's estimate</b>, never the ground truth, with a slew-rate limit like a real servo. That makes it a closed loop: a good estimate keeps the drone in view, which keeps the estimate good. The bridge records the camera pose over time, so each detection's ray uses the pose at the frame's timestamp.</p>
+
+<h2>where to look in the code</h2>
+<table>
+<tr><td><code>sim/src/pole_estimator.hpp</code></td><td><code>pole_camera</code> (ray / pixel / sees) and <code>pole_estimator</code> (all updates, gates, health)</td></tr>
+<tr><td><code>sim/src/pole_tracking_sim.cpp</code></td><td>uwb simulation, time-ordered buffer, camera steering, recovery, scoring, markers</td></tr>
+<tr><td><code>sim/detector/</code></td><td>dataset generation, training, live detection</td></tr>
+<tr><td><code>sim/worlds/pole_tracking.sdf</code></td><td>pole, pan-tilt joints, camera, drone</td></tr>
+<tr><td><code>test/cpp/pole/pole.hpp</code></td><td>camera model and estimator behaviour, including the NaN guard</td></tr>
+<tr><td><code>external/gnss-imu-fusion/</code></td><td><code>kalman_filter</code>, <code>matrix</code>, xbus imu parsing, local frame, error stats, overlay</td></tr>
+</table>
+
+<footer>drone_localization · part of gnss-imu-fusion, gnss_imu_prediction and drone_localization</footer>
+</main>
+</body>
+</html>

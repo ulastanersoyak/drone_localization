@@ -694,7 +694,7 @@ private:
       }
   }
 
-  // The same IMU error model as positioning_sim.
+  // The same IMU error model as positioning_sim in gnss_imu_prediction.
   [[nodiscard]] Xbus
   with_imu_errors (double t, Xbus sample)
   {

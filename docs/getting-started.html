@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Getting started · drone_localization</title>
+<style>
+:root{--bg:#fbfaf8;--fg:#1d1d1f;--muted:#5f6368;--line:#e3e1dc;--card:#ffffff;
+--code:#f2f0ec;--accent:#c2410c;--accent2:#1d4ed8;--ok:#15803d;--warn:#b45309}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#141416;--fg:#e8e6e3;
+--muted:#a1a1aa;--line:#2c2c31;--card:#1c1c20;--code:#232328;--accent:#fb923c;--accent2:#60a5fa;
+--ok:#4ade80;--warn:#fbbf24}}
+:root[data-theme="dark"]{--bg:#141416;--fg:#e8e6e3;--muted:#a1a1aa;--line:#2c2c31;--card:#1c1c20;
+--code:#232328;--accent:#fb923c;--accent2:#60a5fa;--ok:#4ade80;--warn:#fbbf24}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:860px;margin:0 auto;padding:32px 16px 80px}
+header.top{border-bottom:1px solid var(--line);padding-bottom:20px;margin-bottom:28px}
+.repo{font:600 13px/1 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--accent);letter-spacing:.04em}
+h1{font-size:2rem;line-height:1.2;margin:.35em 0 .3em}
+.lede{color:var(--muted);font-size:1.08rem;margin:0}
+nav.pages{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+nav.pages a{font-size:14px;padding:4px 12px;border:1px solid var(--line);border-radius:999px;text-decoration:none;color:var(--fg)}
+nav.pages a.here{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+h2{font-size:1.4rem;margin:2.2em 0 .5em;padding-top:.2em}
+h3{font-size:1.08rem;margin:1.6em 0 .4em}
+a{color:var(--accent2)}
+code{font:0.88em ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--code);padding:.1em .35em;border-radius:4px}
+pre{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:14px 16px;overflow-x:auto;line-height:1.5}
+pre code{background:none;padding:0;font-size:13.5px}
+table{border-collapse:collapse;width:100%;font-size:14.5px;margin:1em 0;display:block;overflow-x:auto}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-weight:600;color:var(--muted);font-size:13px;text-transform:lowercase}
+.steps{counter-reset:s;list-style:none;padding:0}
+.steps>li{counter-increment:s;position:relative;padding-left:44px;margin:0 0 22px}
+.steps>li::before{content:counter(s);position:absolute;left:0;top:0;width:30px;height:30px;border-radius:50%;
+background:var(--accent);color:var(--bg);font-weight:700;display:grid;place-items:center;font-size:14px}
+.note{border-left:3px solid var(--accent2);background:var(--card);padding:10px 14px;border-radius:0 8px 8px 0;margin:1em 0;font-size:15px}
+.note.warn{border-color:var(--warn)}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin:1em 0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.card h4{margin:0 0 6px;font-size:15px}
+.card p{margin:0;font-size:14.5px;color:var(--muted)}
+figure{margin:1.4em 0}
+figure img,figure svg{max-width:100%;height:auto;display:block;border-radius:8px;border:1px solid var(--line)}
+figcaption{color:var(--muted);font-size:14px;margin-top:6px}
+svg text{font-family:system-ui,sans-serif}
+.math{font-family:ui-monospace,Menlo,monospace;background:var(--code);padding:10px 14px;border-radius:8px;overflow-x:auto;white-space:pre;font-size:14px}
+footer{margin-top:60px;color:var(--muted);font-size:13px;border-top:1px solid var(--line);padding-top:16px}
+</style>
+</head>
+<body>
+<main>
+<header class="top">
+<div class="repo">drone_localization</div>
+<h1>Getting started</h1>
+<p class="lede">From a fresh clone to a pole tracking a flying drone: Gazebo, YOLO training and the fusion.</p>
+<nav class="pages"><a href="getting-started.html" class="here">getting started</a><a href="how-it-works.html">how it works</a><a href="../README.md">readme</a></nav>
+</header>
+<p>This guide takes you from a fresh clone to a pole that tracks a flying drone in Gazebo. Along the way you set up YOLO, generate a training set from the simulation, train the detector, and run the full camera + UWB fusion.</p>
+
+<figure><img src="images/pole_tracking.gif" alt="the uwb range ring, the camera ray from the pole and the fused estimate following the drone"><figcaption>What you will have at the end of step 5.</figcaption></figure>
+
+<h2>1. clone with the shared library</h2>
+<pre><code>git clone --recurse-submodules &lt;url&gt;/drone_localization
+cd drone_localization</code></pre>
+<p>If <code>external/gnss-imu-fusion/</code> is empty:</p>
+<pre><code>git submodule update --init
+# local sibling clones only:
+git -c protocol.file.allow=always submodule update --init</code></pre>
+
+<h2>2. build and test the filter</h2>
+<p>The estimator is header-only and needs no Gazebo, so this works on any machine with CMake ≥ 3.22 and a C++20 compiler:</p>
+<pre><code>cmake -S . -B build
+cmake --build build -j
+ctest --test-dir build --output-on-failure</code></pre>
+
+<h2>3. get Gazebo Harmonic</h2>
+<p>On Ubuntu 24.04 install <code>gz-harmonic</code> from packages.osrfoundation.org. On Fedora, use a distrobox. Every command below assumes you are inside it.</p>
+<pre><code>distrobox create --name gazebo --image ubuntu:24.04
+distrobox enter gazebo
+# inside: gazebosim.org's harmonic install for ubuntu, then
+sudo apt install cmake g++ libboost-dev qtbase5-dev qtdeclarative5-dev python3-opencv</code></pre>
+
+<h2>4. set up and train the detector (once)</h2>
+<ol class="steps">
+<li><b>Install YOLO</b> into <code>build-sim/yolo-venv</code>. The venv also sees the system Gazebo Python bindings. If the host has an NVIDIA driver, <code>env.sh</code> makes it reachable from the container.
+<pre><code>sim/detector/setup.sh</code></pre></li>
+<li><b>Generate data and train.</b> <code>train.sh</code> flies several simulated flights in parallel (separate <code>GZ_PARTITION</code>s, different radii and heights), saves pole camera frames labelled from the true drone pose, then trains and writes <code>build-sim/drone.pt</code>. Nothing is labelled by hand.
+<pre><code>sim/detector/train.sh          # optional argument: epochs</code></pre></li>
+</ol>
+<div class="note">The weights are tied to how the drone looks in this world. After changing the drone model, lighting or camera, run <code>train.sh</code> again.</div>
+
+<h2>5. run the tracking</h2>
+<pre><code>sim/run_pole.sh                              # gazebo window + yolo panel
+sim/run_pole.sh --headless --duration 120    # terminal only (still needs a display)
+sim/run_pole.sh --no-gps --no-imu            # camera and uwb only</code></pre>
+<p><code>run_pole.sh</code> builds into <code>build-sim/</code>, starts Gazebo with the shared layout plus a “YOLO detections” panel, starts <code>sim/detector/detect.py</code>, and runs the bridge. Every simulated second it prints the fused error and the detection counts. Ctrl-C prints the summary.</p>
+<figure><img src="images/yolo_detections.gif" alt="yolo detections from the pole camera"><figcaption>The YOLO panel: the box sent to the filter in green, with a magnified inset.</figcaption></figure>
+
+<h3>things to try</h3>
+<table>
+<tr><th>command</th><th>what you learn</th></tr>
+<tr><td><code>--no-gps --no-imu</code></td><td>what the pole alone can do: pure range + bearing</td></tr>
+<tr><td><code>--fixed-camera</code></td><td>why the pan-tilt matters: the drone leaves a fixed field of view</td></tr>
+<tr><td><code>--slew-rate 30</code></td><td>a slow mount lags behind fast passes</td></tr>
+<tr><td><code>--uwb-noise 0.5</code></td><td>the range error shows up along the camera ray</td></tr>
+<tr><td><code>--latency 0.1</code></td><td>too small a fusion delay: late detections get dropped</td></tr>
+<tr><td><code>--csv out.csv</code></td><td>estimate and ground truth per step, for your own plots</td></tr>
+<tr><td><code>DETECTOR_IMGSZ=640 sim/run_pole.sh</code></td><td>a faster but less precise detector</td></tr>
+</table>
+
+<h2>troubleshooting</h2>
+<table>
+<tr><th>symptom</th><th>cause</th></tr>
+<tr><td><code>no detector weights</code></td><td>run step 4 first</td></tr>
+<tr><td>detections stay at zero</td><td>see <code>build-sim/detector.log</code>. Usually the venv is missing or the camera has no display.</td></tr>
+<tr><td>many “late” detections</td><td>YOLO is slower than <code>--latency</code>. Use a GPU, a smaller <code>DETECTOR_IMGSZ</code>, or a larger latency.</td></tr>
+<tr><td>no overlay text</td><td>gz-gui8 or Qt5 dev packages were missing when <code>build-sim</code> was configured</td></tr>
+<tr><td>Gazebo problems</td><td><code>build-sim/gz.log</code></td></tr>
+</table>
+
+<footer>drone_localization · part of gnss-imu-fusion, gnss_imu_prediction and drone_localization</footer>
+</main>
+</body>
+</html>
