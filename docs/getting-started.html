@@ -64,7 +64,7 @@ footer{margin-top:60px;color:var(--muted);font-size:13px;border-top:1px solid va
 <h2>1. clone with the shared library</h2>
 <pre><code>git clone --recurse-submodules &lt;url&gt;/drone_localization
 cd drone_localization</code></pre>
-<p>If <code>external/gnss-imu-fusion/</code> is empty:</p>
+<p>If <code>external/localization_core/</code> is empty:</p>
 <pre><code>git submodule update --init
 # local sibling clones only:
 git -c protocol.file.allow=always submodule update --init</code></pre>
@@ -120,7 +120,7 @@ sim/run_pole.sh --no-gps --no-imu            # camera and uwb only</code></pre>
 <tr><td>Gazebo problems</td><td><code>build-sim/gz.log</code></td></tr>
 </table>
 
-<footer>drone_localization · part of gnss-imu-fusion, gnss_imu_prediction and drone_localization</footer>
+<footer>drone_localization · part of localization_core, gnss_imu_prediction and drone_localization</footer>
 </main>
 </body>
 </html>

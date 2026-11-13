@@ -7,8 +7,8 @@
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
-if [[ ! -f $root/external/gnss-imu-fusion/CMakeLists.txt ]]; then
-  echo "external/gnss-imu-fusion is empty, run: git submodule update --init" >&2
+if [[ ! -f $root/external/localization_core/CMakeLists.txt ]]; then
+  echo "external/localization_core is empty, run: git submodule update --init" >&2
   exit 1
 fi
 build=$root/build-sim
@@ -37,7 +37,7 @@ else
   # The shared GUI layout plus a panel with what YOLO sees, drawn by detect.py.
   # Its topic picker can switch it to the raw /pole/camera feed.
   gui_config=$build/pole_gui.config
-  cat "$root/external/gnss-imu-fusion/sim/gui.config" - >"$gui_config" <<'XML'
+  cat "$root/external/localization_core/sim/gui.config" - >"$gui_config" <<'XML'
 
 <plugin filename="ImageDisplay" name="YOLO detections">
   <gz-gui>

@@ -8,7 +8,7 @@ own imu and gps, into a 3d position. everything runs in gazebo harmonic and
 is scored against the true pose.
 
 the xbus/imu parser, matrix/kalman core, simulation helpers and gazebo gui
-overlay come from [gnss-imu-fusion](external/gnss-imu-fusion), included as a
+overlay come from [localization_core](external/localization_core), included as a
 git submodule. its sibling project, `gnss_imu_prediction`, estimates and
 predicts the drone's position from its own gps and imu.
 
@@ -25,7 +25,7 @@ guides: [getting started](docs/getting-started.html) ·
 | `sim/detector/` | yolo setup, dataset generation, training and the live detector |
 | `sim/run_pole.sh` | builds and runs gazebo, detector and bridge |
 | `test/cpp/` | unit tests of the estimator |
-| `external/gnss-imu-fusion/` | submodule: shared libraries, gui overlay, `sim/gui.config` |
+| `external/localization_core/` | submodule: shared libraries, gui overlay, `sim/gui.config` |
 
 ## building
 
