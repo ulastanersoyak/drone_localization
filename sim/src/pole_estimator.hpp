@@ -3,72 +3,54 @@
 
 #include "kalman/kalman_filter.hpp"
 
+#include <Eigen/Geometry>
+
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <optional>
 
-using vec3 = std::array<double, 3>;
+using vec3 = Eigen::Vector3d;
 
-inline double
-dot (const vec3 &a, const vec3 &b)
-{
-  return (a[0] * b[0]) + (a[1] * b[1]) + (a[2] * b[2]);
-}
-
-inline vec3
-cross (const vec3 &a, const vec3 &b)
-{
-  return { (a[1] * b[2]) - (a[2] * b[1]), (a[2] * b[0]) - (a[0] * b[2]),
-           (a[0] * b[1]) - (a[1] * b[0]) };
-}
-
-inline vec3
-minus (const vec3 &a, const vec3 &b)
-{
-  return { a[0] - b[0], a[1] - b[1], a[2] - b[2] };
-}
-
-inline double
-norm (const vec3 &a)
-{
-  return std::sqrt (dot (a, a));
-}
-
-inline vec3
-normalized (const vec3 &a)
-{
-  const double n = norm (a);
-  return { a[0] / n, a[1] / n, a[2] / n };
-}
-
-// Where the pole hardware sits. Keep in sync with sim/worlds/pole_tracking.sdf.
-// The UWB anchor and the camera are at the same point.
+// The pole's pan-tilt camera: a pinhole. Its pose maps camera coordinates
+// (x forward, y left, z up) to the local enu frame; on the pan-tilt mount it
+// changes with every frame (the simulation takes it from AirSim through tf2).
+// The UWB anchor sits at the camera's position.
 struct pole_camera
 {
-  vec3 position{ 24.0, 0.0, 3.0 };
-  // The rest pose. On the pan-tilt mount these change with every frame.
-  double yaw_rad{ 3.14159265 };
-  double pitch_rad{ -0.1745 }; // negative tilts the view up
-  double focal_px{ 960.0 };    // (width / 2) / tan (hfov / 2)
+  // Where the camera looks: turned by yaw about up (0 = east,
+  // counterclockwise), then by pitch about its left axis (positive tilts the
+  // view down).
+  static Eigen::Isometry3d
+  oriented (const vec3 &position, double yaw_rad, double pitch_rad)
+  {
+    Eigen::Isometry3d pose = Eigen::Isometry3d::Identity ();
+    pose.translate (position);
+    pose.rotate (Eigen::AngleAxisd (yaw_rad, vec3::UnitZ ())
+                 * Eigen::AngleAxisd (pitch_rad, vec3::UnitY ()));
+    return pose;
+  }
+
+  // The rest pose of the simulated pole (localization_core airsim/settings/
+  // pole_*.json): 24 m east, 3 m up, looking west and 10 degrees up.
+  Eigen::Isometry3d pose{ oriented ({ 24.0, 0.0, 3.0 }, 3.14159265, -0.1745) };
+  double focal_px{ 960.0 }; // (width / 2) / tan (hfov / 2)
   double center_u_px{ 960.0 };
   double center_v_px{ 540.0 };
+
+  [[nodiscard]] vec3
+  position () const
+  {
+    return pose.translation ();
+  }
 
   // Unit vector in the world towards a pixel (u right, v down).
   [[nodiscard]] vec3
   ray (double u, double v) const
   {
-    // Camera frame: x forward, y left, z up.
-    const vec3 c{ 1.0, -(u - center_u_px) / focal_px,
-                  -(v - center_v_px) / focal_px };
-    const double cp = std::cos (pitch_rad);
-    const double sp = std::sin (pitch_rad);
-    const double cy = std::cos (yaw_rad);
-    const double sy = std::sin (yaw_rad);
-    const vec3 pitched{ (cp * c[0]) + (sp * c[2]), c[1],
-                        (-sp * c[0]) + (cp * c[2]) };
-    return normalized ({ (cy * pitched[0]) - (sy * pitched[1]),
-                         (sy * pitched[0]) + (cy * pitched[1]), pitched[2] });
+    return (pose.linear ()
+            * vec3{ 1.0, -(u - center_u_px) / focal_px, -(v - center_v_px) / focal_px })
+        .normalized ();
   }
 
   // The pixel a world point lands on, the inverse of ray (). Empty when the
@@ -76,21 +58,13 @@ struct pole_camera
   [[nodiscard]] std::optional<std::array<double, 2>>
   pixel (const vec3 &point) const
   {
-    const vec3 d = minus (point, position);
-    const double cp = std::cos (pitch_rad);
-    const double sp = std::sin (pitch_rad);
-    const double cy = std::cos (yaw_rad);
-    const double sy = std::sin (yaw_rad);
-    const double px = (cy * d[0]) + (sy * d[1]);
-    const double py = (-sy * d[0]) + (cy * d[1]);
-    const double forward = (cp * px) - (sp * d[2]);
-    const double up = (sp * px) + (cp * d[2]);
-    if (forward <= 1e-9)
+    const vec3 c = pose.inverse () * point;
+    if (c.x () <= 1e-9)
       {
         return std::nullopt;
       }
-    return std::array<double, 2>{ center_u_px - (focal_px * py / forward),
-                                  center_v_px - (focal_px * up / forward) };
+    return std::array<double, 2>{ center_u_px - (focal_px * c.y () / c.x ()),
+                                  center_v_px - (focal_px * c.z () / c.x ()) };
   }
 
   [[nodiscard]] bool
@@ -147,8 +121,8 @@ class pole_estimator
         Q (i + 3, i + 3) = q * dt;
         if (accel_)
           {
-            u (i, 0) = (*accel_)[i] * dt2 / 2;
-            u (i + 3, 0) = (*accel_)[i] * dt;
+            u (i, 0) = (*accel_)[static_cast<Eigen::Index> (i)] * dt2 / 2;
+            u (i + 3, 0) = (*accel_)[static_cast<Eigen::Index> (i)] * dt;
           }
       }
     filter_.predict (F, Q, u);
@@ -255,15 +229,15 @@ public:
   bool
   add_range (double range_m)
   {
-    const vec3 to_tag = minus (position (), anchor_);
-    const double predicted = norm (to_tag);
+    const vec3 to_tag = position () - anchor_;
+    const double predicted = to_tag.norm ();
     if (!std::isfinite (range_m) || predicted < 1e-3)
       {
         return false;
       }
-    const vec3 u = normalized (to_tag);
+    const vec3 u = to_tag / predicted;
     const matrix<1, 6> H{ u[0], u[1], u[2], 0, 0, 0 };
-    const vector<1> z{ range_m + dot (u, anchor_) };
+    const vector<1> z{ range_m + u.dot (anchor_) };
     const matrix<1, 1> R{ config_.range_sigma_m * config_.range_sigma_m };
     if (!(filter_.nis (z, H, R) <= config_.gate_1d))
       {
@@ -278,22 +252,19 @@ public:
   {
     // Measures the sideways offset of the state from the ray, in the plane
     // across it. Sideways uncertainty grows with distance.
-    if (!std::isfinite (ray[0]) || !std::isfinite (ray[1])
-        || !std::isfinite (ray[2]))
+    if (!ray.allFinite ())
       {
         return false;
       }
     // Any axis across the ray works; up fails for a ray close to vertical.
-    const vec3 across
-        = std::abs (ray[2]) < 0.9 ? vec3{ 0, 0, 1 } : vec3{ 1, 0, 0 };
-    const vec3 t1 = normalized (cross (ray, across));
-    const vec3 t2 = cross (ray, t1);
+    const vec3 across = std::abs (ray[2]) < 0.9 ? vec3::UnitZ () : vec3::UnitX ();
+    const vec3 t1 = ray.cross (across).normalized ();
+    const vec3 t2 = ray.cross (t1);
     const matrix<2, 6> H{ t1[0], t1[1], t1[2], 0, 0, 0, //
                           t2[0], t2[1], t2[2], 0, 0, 0 };
-    const vector<2> z{ dot (t1, anchor_), dot (t2, anchor_) };
+    const vector<2> z{ t1.dot (anchor_), t2.dot (anchor_) };
     const double sigma
-        = config_.bearing_sigma_rad
-          * std::max (norm (minus (position (), anchor_)), 0.5);
+        = config_.bearing_sigma_rad * std::max ((position () - anchor_).norm (), 0.5);
     const matrix<2, 2> R{ sigma * sigma, 0, 0, sigma * sigma };
     if (!(filter_.nis (z, H, R) <= config_.gate_2d))
       {
@@ -309,8 +280,7 @@ public:
     const matrix<3, 6> H{ 1, 0, 0, 0, 0, 0, //
                           0, 1, 0, 0, 0, 0, //
                           0, 0, 1, 0, 0, 0 };
-    if (!std::isfinite (position[0]) || !std::isfinite (position[1])
-        || !std::isfinite (position[2]))
+    if (!position.allFinite ())
       {
         return false;
       }
