@@ -367,7 +367,7 @@ public:
 private:
   // -- ROS callbacks (spin thread): only convert and enqueue ----------------
 
-  // Seconds since the first message: AirSim stamps are wall clock time.
+  // Seconds since the first message (AirSim stamps run on its own clock).
   double
   sim_time (const rclcpp::Time &stamp)
   {
