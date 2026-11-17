@@ -1,66 +1,95 @@
 #!/usr/bin/env bash
-# Runs the pole tracking simulation: Gazebo, the YOLO detector and the bridge
-# that fuses the sensors and scores them against the ground truth. Run inside
-# the gazebo distrobox, after sim/detector/setup.sh and sim/detector/train.sh.
+# Flies the drone in Cosys-AirSim (Unreal) beside a pole carrying a UWB anchor
+# and a pan-tilt camera, and runs pole_tracking_sim, which fuses UWB, camera
+# detections, IMU and GPS, against it over ROS 2.
 #
-#   sim/run_pole.sh [--headless] [pole_tracking_sim options, see --help]
+#   sim/run_pole.sh [--scenario field|antwerp] [--detector yolo|synthetic]
+#                   [--no-gui] [weather] [pole_tracking_sim options]
+#
+#   field      (default) open ground
+#   antwerp    the same pole and flight on Groenplaats, among Antwerp's buildings
+#   yolo       (default) yolo_ros (external/yolo_ros) on the camera images,
+#              with weights trained on AirSim images (sim/detector/train.sh)
+#   synthetic  sim/detector/synthetic_detect.py: the true position projected
+#              into the camera, with noise and misses (no YOLO needed)
+#   weather    --rain I --snow I --fog I --dust I --leaves I (0..1), --wind SPEED[@FROM_DEG]
+#   pole_tracking_sim options: its ROS parameters written --name value
+#              (--duration S, --no-gps, --no-imu, --uwb-noise M, ...; the
+#              list: the top of sim/src/pole_tracking_sim.cpp)
+#
+# The simulator side is localization_core/airsim (run airsim/setup.sh once);
+# ROS 2 and the detector run in the "ros2" distrobox, started by
+# sim/launch/pole_tracking.launch.py. AirSim's ROS node publishes the pole
+# camera (/airsim_node/drone/pole_Scene/image) and turns it.
+# rviz2: fixed frame "enu", /pole/markers; rqt_image_view /pole/dbg_image.
+#
+# Each run is recorded into build-ros/runs/pole-<scenario>-<time> (rosbag2:
+# the truth as TF, the estimates, the detections) and scored at the end by
+# localization_core airsim/evaluate.py (evo); evo's own tools plot it.
+# LOCALIZATION_CORE_DIR=../localization_core uses a side by side checkout.
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
-if [[ ! -f $root/external/localization_core/CMakeLists.txt ]]; then
-  echo "external/localization_core is empty, run: git submodule update --init" >&2
+core=${LOCALIZATION_CORE_DIR:-$root/external/localization_core}
+core=$(cd "$core" 2>/dev/null && pwd || true)
+if [[ ! -x $core/airsim/run.sh ]]; then
+  echo "localization_core with airsim/ not found at ${LOCALIZATION_CORE_DIR:-external/localization_core}," \
+    "run: git submodule update --init (or set LOCALIZATION_CORE_DIR)" >&2
   exit 1
 fi
-build=$root/build-sim
+box=${LOCSIM_ROS_BOX:-ros2}
+# shellcheck source=/dev/null
+. "$core/airsim/params.sh"
 
-headless=false
+scenario=field
+detector=yolo
+engine_args=()
 args=()
-for arg in "$@"; do
-  if [[ $arg == --headless ]]; then headless=true; else args+=("$arg"); fi
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --scenario) scenario=$2; shift 2 ;;
+    --detector) detector=$2; shift 2 ;;
+    --no-gui|--headless) engine_args+=(--offscreen); shift ;;
+    --rain|--snow|--fog|--dust|--leaves|--wind) engine_args+=("$1" "$2"); shift 2 ;;
+    *) args+=("$1"); shift ;;
+  esac
 done
+case $scenario in
+  field) map=Field ;;
+  antwerp) map=Antwerp ;;
+  *) echo "unknown scenario $scenario (field, antwerp)" >&2; exit 2 ;;
+esac
+settings=$core/airsim/settings/pole_$scenario.json
 
-if [[ ! -f $build/drone.pt ]]; then
-  echo "no detector weights, run sim/detector/setup.sh and sim/detector/train.sh" >&2
+weights=$root/build-sim/drone-airsim.pt
+if [[ $detector == yolo && ! -f $weights ]]; then
+  echo "no YOLO weights for AirSim images ($weights): train them with" \
+    "sim/detector/train.sh, or run with --detector synthetic" >&2
   exit 1
 fi
 
-cmake -S "$root" -B "$build" -DCMAKE_BUILD_TYPE=Release >/dev/null
-cmake --build "$build" -j --target pole_tracking_sim AccuracyOverlay
-export GZ_GUI_PLUGIN_PATH="$build/gz_gui_plugins${GZ_GUI_PLUGIN_PATH:+:$GZ_GUI_PLUGIN_PATH}"
-. "$root/sim/detector/env.sh"
+# Build yolo_ros (its messages are pole_tracking_sim's input) and
+# pole_tracking_sim where ROS 2 and AirSim's ROS messages are.
+"$root/sim/build.sh"
 
-# The camera needs a display even without the Gazebo window: headless EGL
-# rendering does not work in the distrobox.
-if $headless; then
-  gz sim -s -r "$root/sim/worlds/pole_tracking.sdf" &>"$build/gz.log" &
-else
-  # The shared GUI layout plus a panel with what YOLO sees, drawn by detect.py.
-  # Its topic picker can switch it to the raw /pole/camera feed.
-  gui_config=$build/pole_gui.config
-  cat "$root/external/localization_core/sim/gui.config" - >"$gui_config" <<'XML'
+to_ros_params ${args[@]+"${args[@]}"}
+bag=$root/build-ros/runs/pole-$scenario-$detector-$(date +%Y%m%d-%H%M%S)
+mkdir -p "$(dirname "$bag")"
 
-<plugin filename="ImageDisplay" name="YOLO detections">
-  <gz-gui>
-    <title>YOLO detections</title>
-    <property type="string" key="state">docked</property>
-  </gz-gui>
-  <topic>/pole/camera/annotated</topic>
-  <topic_picker>true</topic_picker>
-</plugin>
-XML
-  gz sim -r --gui-config "$gui_config" \
-    "$root/sim/worlds/pole_tracking.sdf" &>"$build/gz.log" &
+# Unreal, then sim/launch/pole_tracking.launch.py (AirSim's ROS node, the
+# detector, pole_tracking_sim, the recorder); the run ends when
+# pole_tracking_sim does.
+status=0
+LOCSIM_ROS_SETUP=$root/build-ros/colcon/install/setup.bash \
+  "$core/airsim/run.sh" --map "$map" --settings "$settings" ${engine_args[@]+"${engine_args[@]}"} \
+  --launch "$root/sim/launch/pole_tracking.launch.py" "settings:=$settings" "detector:=$detector" \
+  "weights:=$weights" "imgsz:=${DETECTOR_IMGSZ:-1280}" "record:=$bag" \
+  "params:=${ros_params[*]+${ros_params[*]}}" || status=$?
+
+if [[ -d $bag ]]; then
+  # evo reads the TF from the recording with ROS's tf2_py.
+  distrobox enter "$box" -- bash -c ". /opt/ros/jazzy/setup.bash && exec '$core/airsim/.venv/bin/python' \
+    '$core/airsim/evaluate.py' '$bag' 'fused (UWB + camera + IMU + GPS)=/pole/fused' \
+    'camera ray + UWB only=/pole/ray_uwb' 'raw GPS=/pole/gps'" || true
 fi
-gz_pid=$!
-python "$root/sim/detector/detect.py" --weights "$build/drone.pt" \
-  --imgsz "${DETECTOR_IMGSZ:-1280}" &>"$build/detector.log" &
-detector_pid=$!
-cleanup() {
-  kill "$detector_pid" 2>/dev/null || true
-  pkill -P "$gz_pid" 2>/dev/null || true
-  kill "$gz_pid" 2>/dev/null || true
-  wait 2>/dev/null || true
-}
-trap cleanup EXIT
-
-"$build/sim/pole_tracking_sim" "${args[@]}"
+exit "$status"
