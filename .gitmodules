@@ -1,3 +1,6 @@
 [submodule "external/localization_core"]
 	path = external/localization_core
 	url = ../localization_core
+[submodule "external/yolo_ros"]
+	path = external/yolo_ros
+	url = https://github.com/mgonzs13/yolo_ros.git
