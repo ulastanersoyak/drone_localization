@@ -79,7 +79,7 @@ footer{margin-top:60px;color:var(--muted);font-size:13px;border-top:1px solid va
 
 <h2>the sensors</h2>
 <div class="cards">
-<div class="card"><h4>uwb range</h4><p>Time of flight between anchor and tag gives a distance. It is accurate in all directions but says nothing about direction. Simulated in the bridge from the true distance plus noise.</p></div>
+<div class="card"><h4>uwb range</h4><p>Time of flight between anchor and tag gives a distance. It is accurate in all directions but says nothing about direction. Simulated in <code>pole_tracking_sim</code> from the true distance plus noise.</p></div>
 <div class="card"><h4>camera bearing</h4><p>YOLO finds the drone's pixel (u, v). The pinhole model turns the pixel into a unit ray in the world, using the pan-tilt pose at the instant of the frame. Accurate across the ray, blind along it.</p></div>
 <div class="card"><h4>imu (optional)</h4><p>The drone's own acceleration in ENU carries the state between pole measurements.</p></div>
 <div class="card"><h4>gps (optional)</h4><p>A noisy absolute position and horizontal velocity. Useful for initialization and as a sanity anchor.</p></div>
@@ -88,8 +88,9 @@ footer{margin-top:60px;color:var(--muted);font-size:13px;border-top:1px solid va
 
 <h2>the detector</h2>
 <ul>
-<li><b>Training data without labelling.</b> <code>make_dataset.py</code> saves frames from simulated flights. For each frame it projects the drone's true 3D bounding box through the same pinhole model the estimator uses, which gives a YOLO label for free.</li>
-<li><b>Live.</b> <code>detect.py</code> always takes the newest camera frame, so a slow model drops frames instead of falling behind. It publishes <code>"&lt;frame time&gt; &lt;u&gt; &lt;v&gt; &lt;confidence&gt;"</code> on <code>/pole/detection</code> and an annotated image for the GUI panel.</li>
+<li><b>Training data without labelling.</b> <code>make_dataset.py</code> saves frames from simulated flights in AirSim, in several places and weathers. For each frame it takes AirSim's own 2D box of the drone (the box Unreal computes from the drone's model, with the simulation paused so box and image match), which gives a YOLO label for free.</li>
+<li><b>Live.</b> <a href="https://github.com/mgonzs13/yolo_ros">yolo_ros</a> runs our weights on the pole camera. It always takes the newest frame, so a slow model drops frames instead of falling behind, and publishes the boxes with the frame's timestamp on <code>/pole/detections</code>; its debug node draws them on the image.</li>
+<li><b>Synthetic.</b> For runs without YOLO, <code>synthetic_detect.py</code> projects the true position into the camera with noise, misses and a delay: the fusion alone, with a detector that is right up to its pixel noise.</li>
 </ul>
 
 <h2>the filter</h2>
@@ -106,7 +107,7 @@ footer{margin-top:60px;color:var(--muted);font-size:13px;border-top:1px solid va
 <h3>starting, recovering</h3>
 <ul>
 <li><b>Initialization:</b> the first detection that has a UWB range becomes <code>pole + r · ray</code>, or the first GPS fix when there is one.</li>
-<li><b>Recovery:</b> if many detections in a row are rejected, the bridge trusts them over the state and re-initializes from the raw range + ray point.</li>
+<li><b>Recovery:</b> if many detections in a row are rejected, the program trusts them over the state and re-initializes from the raw range + ray point.</li>
 <li><b>Health:</b> if the state or covariance ever becomes non-finite (NaN/∞), the estimator reports unhealthy and is reset rather than freezing on garbage.</li>
 </ul>
 
@@ -114,16 +115,17 @@ footer{margin-top:60px;color:var(--muted);font-size:13px;border-top:1px solid va
 <p>A detection arrives late. YOLO needs time, but the frame was taken earlier, and applying it as if it were current would put the drone where it used to be. So every measurement (range, detection, IMU, GPS) goes into a buffer keyed by its <i>measurement</i> time. The filter runs a fixed <code>--latency</code> behind the simulation and consumes the buffer in time order, so each measurement is applied at the moment it was taken. Detections older than that window count as “late” and are dropped.</p>
 
 <h2>steering the camera</h2>
-<p>A fixed camera loses the drone as soon as it leaves the field of view. The pan-tilt mount is steered toward the <b>filter's estimate</b>, never the ground truth, with a slew-rate limit like a real servo. That makes it a closed loop: a good estimate keeps the drone in view, which keeps the estimate good. The bridge records the camera pose over time, so each detection's ray uses the pose at the frame's timestamp.</p>
+<p>A fixed camera loses the drone as soon as it leaves the field of view. The pan-tilt mount is steered toward the <b>filter's estimate</b>, never the ground truth, with a slew-rate limit like a real servo. That makes it a closed loop: a good estimate keeps the drone in view, which keeps the estimate good. AirSim publishes the camera pose of every image; tf2 keeps them over time, so each detection's ray uses the pose at the frame's timestamp.</p>
 
 <h2>where to look in the code</h2>
 <table>
 <tr><td><code>sim/src/pole_estimator.hpp</code></td><td><code>pole_camera</code> (ray / pixel / sees) and <code>pole_estimator</code> (all updates, gates, health)</td></tr>
-<tr><td><code>sim/src/pole_tracking_sim.cpp</code></td><td>uwb simulation, time-ordered buffer, camera steering, recovery, scoring, markers</td></tr>
-<tr><td><code>sim/detector/</code></td><td>dataset generation, training, live detection</td></tr>
-<tr><td><code>sim/worlds/pole_tracking.sdf</code></td><td>pole, pan-tilt joints, camera, drone</td></tr>
+<tr><td><code>sim/src/pole_tracking_sim.cpp</code></td><td>the ROS 2 node: uwb simulation, time-ordered buffer, camera steering, recovery, markers, the published estimates</td></tr>
+<tr><td><code>sim/launch/pole_tracking.launch.py</code></td><td>starts AirSim's ROS side, the detector, the program and the recorder</td></tr>
+<tr><td><code>sim/detector/</code></td><td>dataset generation, training, the synthetic detector</td></tr>
+<tr><td><code>external/yolo_ros/</code></td><td>the live detector</td></tr>
 <tr><td><code>test/cpp/pole/pole.hpp</code></td><td>camera model and estimator behaviour, including the NaN guard</td></tr>
-<tr><td><code>external/localization_core/</code></td><td><code>kalman_filter</code>, <code>matrix</code>, xbus imu parsing, local frame, error stats, overlay</td></tr>
+<tr><td><code>external/localization_core/</code></td><td><code>kalman_filter</code>, <code>matrix</code>, xbus imu parsing, the simulator side (<code>airsim/</code>: settings with the pole camera, maps, scoring)</td></tr>
 </table>
 
 <footer>drone_localization · part of localization_core, gnss_imu_prediction and drone_localization</footer>
