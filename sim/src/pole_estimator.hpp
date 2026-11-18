@@ -97,6 +97,9 @@ class pole_estimator
 {
   pole_estimator_config config_;
   vec3 anchor_;
+  using vector6 = kalman_filter<6>::vector;
+  using matrix6 = kalman_filter<6>::matrix;
+
   kalman_filter<6> filter_{};
   bool initialized_{ false };
   double t_{ 0 };
@@ -105,25 +108,21 @@ class pole_estimator
   void
   propagate (double dt)
   {
-    auto F = matrix<6, 6>::identity ();
+    const Eigen::Matrix3d I = Eigen::Matrix3d::Identity ();
+    matrix6 F = matrix6::Identity ();
+    F.topRightCorner<3, 3> () = I * dt;
     const double sigma = accel_ ? config_.imu_accel_sigma_mps2
                                 : config_.maneuver_accel_sigma_mps2;
+    // Continuous white noise acceleration.
     const double q = sigma * sigma;
     const double dt2 = dt * dt;
     const double dt3 = dt2 * dt;
-    matrix<6, 6> Q{};
-    vector<6> u{};
-    for (std::size_t i = 0; i < 3; ++i)
+    matrix6 Q;
+    Q << I * (q * dt3 / 3), I * (q * dt2 / 2), I * (q * dt2 / 2), I * (q * dt);
+    vector6 u = vector6::Zero ();
+    if (accel_)
       {
-        F (i, i + 3) = dt;
-        Q (i, i) = q * dt3 / 3;
-        Q (i, i + 3) = Q (i + 3, i) = q * dt2 / 2;
-        Q (i + 3, i + 3) = q * dt;
-        if (accel_)
-          {
-            u (i, 0) = (*accel_)[static_cast<Eigen::Index> (i)] * dt2 / 2;
-            u (i + 3, 0) = (*accel_)[static_cast<Eigen::Index> (i)] * dt;
-          }
+        u << *accel_ * (dt2 / 2), *accel_ * dt;
       }
     filter_.predict (F, Q, u);
   }
@@ -143,15 +142,13 @@ public:
   [[nodiscard]] vec3
   position () const
   {
-    const auto &x = filter_.state ();
-    return { x (0, 0), x (1, 0), x (2, 0) };
+    return filter_.state ().head<3> ();
   }
 
   [[nodiscard]] vec3
   velocity () const
   {
-    const auto &x = filter_.state ();
-    return { x (3, 0), x (4, 0), x (5, 0) };
+    return filter_.state ().tail<3> ();
   }
 
   // The time the state is valid for.
@@ -164,21 +161,20 @@ public:
   [[nodiscard]] double
   sigma_position (std::size_t axis) const
   {
-    return std::sqrt (filter_.covariance () (axis, axis));
+    const auto i = static_cast<Eigen::Index> (axis);
+    return std::sqrt (filter_.covariance () (i, i));
   }
 
   void
   initialize (double t, const vec3 &position, double sigma_m)
   {
-    vector<6> x0{ position[0], position[1], position[2], 0, 0, 0 };
-    matrix<6, 6> P0{};
-    for (std::size_t i = 0; i < 3; ++i)
-      {
-        P0 (i, i) = sigma_m * sigma_m;
-        P0 (i + 3, i + 3) = config_.initial_velocity_sigma_mps
-                            * config_.initial_velocity_sigma_mps;
-      }
-    filter_ = kalman_filter<6>{ x0, P0 };
+    vector6 x0;
+    x0 << position, vec3::Zero ();
+    vector6 variances;
+    variances << vec3::Constant (sigma_m * sigma_m),
+        vec3::Constant (config_.initial_velocity_sigma_mps
+                        * config_.initial_velocity_sigma_mps);
+    filter_ = kalman_filter<6>{ x0, variances.asDiagonal () };
     t_ = t;
     initialized_ = true;
   }
@@ -194,17 +190,9 @@ public:
   [[nodiscard]] bool
   healthy () const
   {
-    const auto &x = filter_.state ();
     const auto &P = filter_.covariance ();
-    for (std::size_t i = 0; i < 6; ++i)
-      {
-        if (!std::isfinite (x (i, 0)) || !std::isfinite (P (i, i))
-            || P (i, i) < 0)
-          {
-            return false;
-          }
-      }
-    return true;
+    return filter_.state ().allFinite () && P.diagonal ().allFinite ()
+           && (P.diagonal ().array () >= 0).all ();
   }
 
   // Predicts forward to time t. Out of order times are ignored.
@@ -236,9 +224,10 @@ public:
         return false;
       }
     const vec3 u = to_tag / predicted;
-    const matrix<1, 6> H{ u[0], u[1], u[2], 0, 0, 0 };
-    const vector<1> z{ range_m + u.dot (anchor_) };
-    const matrix<1, 1> R{ config_.range_sigma_m * config_.range_sigma_m };
+    Eigen::Matrix<double, 1, 6> H = Eigen::Matrix<double, 1, 6>::Zero ();
+    H.head<3> () = u.transpose ();
+    const Eigen::Matrix<double, 1, 1> z{ range_m + u.dot (anchor_) };
+    const Eigen::Matrix<double, 1, 1> R{ config_.range_sigma_m * config_.range_sigma_m };
     if (!(filter_.nis (z, H, R) <= config_.gate_1d))
       {
         return false;
@@ -260,12 +249,13 @@ public:
     const vec3 across = std::abs (ray[2]) < 0.9 ? vec3::UnitZ () : vec3::UnitX ();
     const vec3 t1 = ray.cross (across).normalized ();
     const vec3 t2 = ray.cross (t1);
-    const matrix<2, 6> H{ t1[0], t1[1], t1[2], 0, 0, 0, //
-                          t2[0], t2[1], t2[2], 0, 0, 0 };
-    const vector<2> z{ t1.dot (anchor_), t2.dot (anchor_) };
+    Eigen::Matrix<double, 2, 6> H = Eigen::Matrix<double, 2, 6>::Zero ();
+    H.block<1, 3> (0, 0) = t1.transpose ();
+    H.block<1, 3> (1, 0) = t2.transpose ();
+    const Eigen::Vector2d z{ t1.dot (anchor_), t2.dot (anchor_) };
     const double sigma
         = config_.bearing_sigma_rad * std::max ((position () - anchor_).norm (), 0.5);
-    const matrix<2, 2> R{ sigma * sigma, 0, 0, sigma * sigma };
+    const Eigen::Matrix2d R = Eigen::Vector2d::Constant (sigma * sigma).asDiagonal ();
     if (!(filter_.nis (z, H, R) <= config_.gate_2d))
       {
         return false;
@@ -277,17 +267,16 @@ public:
   bool
   add_gps (const vec3 &position, double sigma_m, double sigma_up_m)
   {
-    const matrix<3, 6> H{ 1, 0, 0, 0, 0, 0, //
-                          0, 1, 0, 0, 0, 0, //
-                          0, 0, 1, 0, 0, 0 };
+    Eigen::Matrix<double, 3, 6> H = Eigen::Matrix<double, 3, 6>::Zero ();
+    H.leftCols<3> () = Eigen::Matrix3d::Identity ();
     if (!position.allFinite ())
       {
         return false;
       }
-    const vector<3> z{ position[0], position[1], position[2] };
-    const matrix<3, 3> R{ sigma_m * sigma_m, 0, 0, 0,
-                          sigma_m * sigma_m, 0, 0, 0,
-                          sigma_up_m * sigma_up_m };
+    const vec3 &z = position;
+    const Eigen::Matrix3d R
+        = vec3 (sigma_m * sigma_m, sigma_m * sigma_m, sigma_up_m * sigma_up_m)
+              .asDiagonal ();
     if (!(filter_.nis (z, H, R) <= config_.gate_3d))
       {
         return false;
@@ -300,10 +289,11 @@ public:
   bool
   add_gps_velocity (double v_east, double v_north, double sigma_mps)
   {
-    const matrix<2, 6> H{ 0, 0, 0, 1, 0, 0, //
-                          0, 0, 0, 0, 1, 0 };
-    const vector<2> z{ v_east, v_north };
-    const matrix<2, 2> R{ sigma_mps * sigma_mps, 0, 0, sigma_mps * sigma_mps };
+    Eigen::Matrix<double, 2, 6> H = Eigen::Matrix<double, 2, 6>::Zero ();
+    H.block<2, 2> (0, 3) = Eigen::Matrix2d::Identity ();
+    const Eigen::Vector2d z{ v_east, v_north };
+    const Eigen::Matrix2d R
+        = Eigen::Vector2d::Constant (sigma_mps * sigma_mps).asDiagonal ();
     if (!(filter_.nis (z, H, R) <= config_.gate_2d))
       {
         return false;

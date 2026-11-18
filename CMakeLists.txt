@@ -14,12 +14,11 @@ include(${localization_core_dir}/cmake/common.cmake)
 add_subdirectory(${localization_core_dir} ${CMAKE_BINARY_DIR}/localization_core)
 
 # The filter fusing uwb ranges, camera rays, imu and gps (header only). Its
-# vector maths is Eigen's (Fedora: eigen3-devel, Ubuntu: libeigen3-dev).
-find_package(Eigen3 3.3 REQUIRED NO_MODULE)
+# vector maths is Eigen's, which localization_core_headers brings along.
 add_library(pole_estimator INTERFACE)
 target_include_directories(pole_estimator
                            INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/sim/src)
-target_link_libraries(pole_estimator INTERFACE localization_core_headers Eigen3::Eigen)
+target_link_libraries(pole_estimator INTERFACE localization_core_headers)
 
 enable_testing()
 add_subdirectory(test/cpp)
