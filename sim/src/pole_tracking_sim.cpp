@@ -37,7 +37,7 @@
 #include "pole_estimator.hpp"
 #include "ros_sim.hpp"
 
-#include "mti_630/data_packet_parser.hpp"
+#include "kalman/measurements.hpp"
 #include "utility/queue.hpp"
 
 #include <airsim_interfaces/msg/gimbal_angle_quat_cmd.hpp>
@@ -169,7 +169,7 @@ from_rotation_vector (const vec3 &r)
 
 struct imu_event
 {
-  Xbus sample;
+  imu_sample sample;
 };
 
 struct navsat_event
@@ -404,14 +404,13 @@ private:
     Eigen::Quaterniond q;
     tf2::fromMsg (msg.orientation, q);
     q = Eigen::Quaterniond (world->rotation ()) * q;
-    Xbus sample{};
-    sample.quat = { q.w (), q.x (), q.y (), q.z () };
-    sample.quaternionAvailable = true;
-    sample.quatFrame = xbus_frame::ENU;
+    const double t = sim_time (rclcpp::Time (msg.header.stamp));
+    imu_sample sample{};
+    sample.time_s = t;
+    sample.orientation = q;
     const auto &a = msg.linear_acceleration;
-    sample.acc = { a.x, a.y, a.z };
-    sample.accAvailable = true;
-    inbox_.push (timed_measurement{ sim_time (rclcpp::Time (msg.header.stamp)), imu_event{ sample } });
+    sample.specific_force = { a.x, a.y, a.z };
+    inbox_.push (timed_measurement{ t, imu_event{ sample } });
   }
 
   void
@@ -652,15 +651,11 @@ private:
   void
   handle (double t, const imu_event &e)
   {
-    const auto accel = with_imu_errors (t, e.sample).accelerationENU (world_gravity);
-    if (accel)
-      {
-        estimator_->set_acceleration ({ (*accel)[0], (*accel)[1], (*accel)[2] });
-      }
+    estimator_->set_acceleration (with_imu_errors (t, e.sample).acceleration_enu (world_gravity));
   }
 
-  [[nodiscard]] Xbus
-  with_imu_errors (double t, Xbus sample)
+  [[nodiscard]] imu_sample
+  with_imu_errors (double t, imu_sample sample)
   {
     const vec3 sigma{ opt_.tilt_error_deg * deg, opt_.tilt_error_deg * deg,
                       opt_.heading_error_deg * deg };
@@ -671,12 +666,11 @@ private:
       {
         orientation_error_[i] = (phi * orientation_error_[i])
                                 + (sigma[i] * std::sqrt (1 - phi * phi) * noise_ (rng_));
-        sample.acc[static_cast<std::size_t> (i)] += accel_bias_[i];
       }
-    const auto &[w, x, y, z] = sample.quat;
-    const Eigen::Quaterniond q
-        = from_rotation_vector (orientation_error_) * Eigen::Quaterniond (w, x, y, z);
-    sample.quat = { q.w (), q.x (), q.y (), q.z () };
+    sample.specific_force += accel_bias_;
+    // The orientation maps sensor to local, so the local frame error goes on
+    // the left.
+    sample.orientation = from_rotation_vector (orientation_error_) * sample.orientation;
     return sample;
   }
 

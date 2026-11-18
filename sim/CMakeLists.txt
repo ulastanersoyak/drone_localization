@@ -17,7 +17,7 @@ find_package(GeographicLib REQUIRED)
 
 add_executable(pole_tracking_sim src/pole_tracking_sim.cpp)
 target_include_directories(pole_tracking_sim PRIVATE ${GeographicLib_INCLUDE_DIRS})
-target_link_libraries(pole_tracking_sim PRIVATE pole_estimator xbus localization_core_sim
+target_link_libraries(pole_tracking_sim PRIVATE pole_estimator localization_core_sim
                       rclcpp::rclcpp tf2_ros::tf2_ros tf2_eigen::tf2_eigen
                       ${GeographicLib_LIBRARIES}
                       ${sensor_msgs_TARGETS} ${nav_msgs_TARGETS} ${geometry_msgs_TARGETS}
