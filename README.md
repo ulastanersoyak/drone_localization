@@ -7,7 +7,7 @@ drone). a kalman filter fuses range and bearing, optionally with the drone's
 own imu and gps, into a 3d position. everything runs in cosys-airsim (unreal
 engine) over ros 2 and is scored against the true pose.
 
-the xbus/imu parser, matrix/kalman core and the simulator side come from
+the kalman core, the imu sample type and the simulator side come from
 [localization_core](external/localization_core), included as a git submodule. its sibling project, `gnss_imu_prediction`, estimates and
 predicts the drone's position from its own gps and imu.
 
@@ -29,8 +29,9 @@ guides: [getting started](https://ulastanersoyak.github.io/drone_localization/ge
 
 ## building
 
-needs cmake ≥ 3.22, a c++20 compiler and eigen (fedora: `eigen3-devel`,
-ubuntu: `libeigen3-dev`); the simulation needs the `ros2` distrobox set up by
+needs cmake ≥ 3.22, a c++20 compiler, eigen and geographiclib (fedora:
+`eigen3-devel GeographicLib-devel`, ubuntu: `libeigen3-dev
+libgeographiclib-dev`); the simulation needs the `ros2` distrobox set up by
 localization_core's `airsim/setup.sh` (see below).
 
 ```
@@ -98,9 +99,7 @@ localization_core's `airsim/evaluate.py` (evo): the fused estimate
 (`/pole/fused`), the camera ray at the uwb distance (`/pole/ray_uwb`) and
 the raw gps (`/pole/gps`) against the true pose. the detector logs to the
 ros log (`~/.ros/log/latest/`). watch with rviz2 (fixed frame `enu`,
-`/pole/markers`) and `rqt_image_view /pole/dbg_image`. while
-localization_core is not committed and the submodule not updated, run with
-`LOCALIZATION_CORE_DIR=../localization_core`. `DETECTOR_IMGSZ` sets the yolo
+`/pole/markers`) and `rqt_image_view /pole/dbg_image`. `DETECTOR_IMGSZ` sets the yolo
 input width (default 1280). the options are `pole_tracking_sim`'s ros 2
 parameters (`--uwb-noise 0.2` becomes `uwb_noise:=0.2`):
 

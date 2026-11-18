@@ -68,7 +68,7 @@ cd drone_localization</code></pre>
 git -c protocol.file.allow=always submodule update --init</code></pre>
 
 <h2>2. build and test the filter</h2>
-<p>The estimator is header-only and needs no simulator: CMake ≥ 3.22, a C++20 compiler and Eigen (Fedora <code>eigen3-devel</code>, Ubuntu <code>libeigen3-dev</code>).</p>
+<p>The estimator is header-only and needs no simulator: CMake ≥ 3.22, a C++20 compiler, Eigen and GeographicLib (Fedora <code>eigen3-devel GeographicLib-devel</code>, Ubuntu <code>libeigen3-dev libgeographiclib-dev</code>).</p>
 <pre><code>cmake -S . -B build
 cmake --build build -j
 ctest --test-dir build --output-on-failure</code></pre>
