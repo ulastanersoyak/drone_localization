@@ -131,7 +131,10 @@ def main():
             time.sleep(0.005)
     except KeyboardInterrupt:
         pass
-    rclpy.try_shutdown()
+    try:
+        rclpy.try_shutdown()
+    except RuntimeError:
+        pass  # rclpy's signal handler shut the context down in between
     spinner.join(timeout=2)  # exit only once the ROS thread has
 
 
