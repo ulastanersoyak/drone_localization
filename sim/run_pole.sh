@@ -4,7 +4,7 @@
 # detections, IMU and GPS, against it over ROS 2.
 #
 #   sim/run_pole.sh [--scenario field|antwerp] [--detector yolo|synthetic]
-#                   [--no-gui] [weather] [pole_tracking_sim options]
+#                   [--no-gui] [--rviz] [weather] [options]
 #
 #   field      (default) open ground
 #   antwerp    the same pole and flight on Groenplaats, among Antwerp's buildings
@@ -12,16 +12,19 @@
 #              with weights trained on AirSim images (sim/detector/train.sh)
 #   synthetic  sim/detector/synthetic_detect.py: the true position projected
 #              into the camera, with noise and misses (no YOLO needed)
+#   --rviz     rviz2 with sim/rviz/pole.rviz (the estimates, the true drone
+#              frame, the camera image with YOLO's boxes)
 #   weather    --rain I --snow I --fog I --dust I --leaves I (0..1), --wind SPEED[@FROM_DEG]
-#   pole_tracking_sim options: its ROS parameters written --name value
+#   options    ROS parameters written --name value: pole_tracking_sim's
 #              (--duration S, --no-gps, --no-imu, --uwb-noise M, ...; the
-#              list: the top of sim/src/pole_tracking_sim.cpp)
+#              list: sim/src/pole_tracking_sim_parameters.yaml) and the
+#              autopilot's (--radius M, --altitude M, --altitude-swing M)
 #
 # The simulator side is localization_core/airsim (run airsim/setup.sh once);
 # ROS 2 and the detector run in the "ros2" distrobox, started by
 # sim/launch/pole_tracking.launch.py. AirSim's ROS node publishes the pole
 # camera (/airsim_node/drone/pole_Scene/image) and turns it.
-# rviz2: fixed frame "enu", /pole/markers; rqt_image_view /pole/dbg_image.
+# The drone is flown by localization_core's airsim/autopilot.py.
 #
 # Each run is recorded into build-ros/runs/pole-<scenario>-<time> (rosbag2:
 # the truth as TF, the estimates, the detections) and scored at the end by
@@ -44,12 +47,14 @@ box=${LOCSIM_ROS_BOX:-ros2}
 scenario=field
 detector=yolo
 engine_args=()
+launch_args=()
 args=()
 while [[ $# -gt 0 ]]; do
   case $1 in
     --scenario) scenario=$2; shift 2 ;;
     --detector) detector=$2; shift 2 ;;
     --no-gui|--headless) engine_args+=(--offscreen); shift ;;
+    --rviz) launch_args+=(rviz:=true); shift ;;
     --rain|--snow|--fog|--dust|--leaves|--wind) engine_args+=("$1" "$2"); shift 2 ;;
     *) args+=("$1"); shift ;;
   esac
@@ -84,7 +89,7 @@ LOCSIM_ROS_SETUP=$root/build-ros/colcon/install/setup.bash \
   "$core/airsim/run.sh" --map "$map" --settings "$settings" ${engine_args[@]+"${engine_args[@]}"} \
   --launch "$root/sim/launch/pole_tracking.launch.py" "settings:=$settings" "detector:=$detector" \
   "weights:=$weights" "imgsz:=${DETECTOR_IMGSZ:-1280}" "record:=$bag" \
-  "params:=${ros_params[*]+${ros_params[*]}}" || status=$?
+  "params:=${ros_params[*]+${ros_params[*]}}" ${launch_args[@]+"${launch_args[@]}"} || status=$?
 
 if [[ -d $bag ]]; then
   # evo reads the TF from the recording with ROS's tf2_py.
