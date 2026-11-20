@@ -19,19 +19,20 @@ guides: [getting started](https://ulastanersoyak.github.io/drone_localization/ge
 | path | what |
 |---|---|
 | `sim/src/pole_estimator.hpp` | the filter (header only, target `pole_estimator`) and the pole camera model |
-| `sim/src/pole_tracking_sim.cpp` | the ros 2 node: simulated uwb, detections → rays, pan-tilt steering |
-| `sim/launch/pole_tracking.launch.py` | starts airsim's ros side, the detector, the program and the recorder |
+| `sim/src/pole_tracking_sim.cpp` | the ros 2 node: simulated uwb, detections → rays, pan-tilt steering; its parameters in `pole_tracking_sim_parameters.yaml` |
+| `sim/launch/pole_tracking.launch.py` | starts airsim's ros side, the autopilot, the detector, the program and the recorder |
+| `sim/rviz/pole.rviz` | the rviz2 view (`--rviz`) |
 | `sim/detector/` | yolo setup, dataset generation and training, the synthetic detector |
 | `sim/run_pole.sh`, `sim/build.sh` | build and run a simulation |
-| `test/cpp/` | unit tests of the estimator |
+| `test/cpp/` | unit tests of the estimator (googletest) |
 | `external/localization_core/` | submodule: shared libraries, the simulator side (`airsim/`) |
 | `external/yolo_ros/` | submodule: [yolo_ros](https://github.com/mgonzs13/yolo_ros), the live detector |
 
 ## building
 
-needs cmake ≥ 3.22, a c++20 compiler, eigen and geographiclib (fedora:
-`eigen3-devel GeographicLib-devel`, ubuntu: `libeigen3-dev
-libgeographiclib-dev`); the simulation needs the `ros2` distrobox set up by
+needs cmake ≥ 3.22, a c++20 compiler, eigen, geographiclib and googletest
+(fedora: `eigen3-devel GeographicLib-devel gtest-devel`, ubuntu:
+`libeigen3-dev libgeographiclib-dev libgtest-dev`); the simulation needs the `ros2` distrobox set up by
 localization_core's `airsim/setup.sh` (see below).
 
 ```
@@ -52,7 +53,8 @@ carries a uwb anchor (range, 20 hz) and a camera on a pan-tilt mount. a yolo
 detector finds the drone in the camera image and each detection becomes a
 bearing ray. `pole_tracking_sim` fuses the ranges and rays, optionally with
 the drone's own imu and gps; the run is recorded and the estimate scored
-against the true pose.
+against the true pose. the drone is flown by localization_core's
+`airsim/autopilot.py`, which waits for the first detection like the program.
 the camera is turned towards the estimate (never the ground truth), slew
 rate limited, so it keeps the drone in view. detections arrive late because
 yolo takes time, so all measurements are buffered and fused in timestamp
@@ -87,21 +89,26 @@ sim/run_pole.sh --no-gui --duration 120           # no window
 sim/run_pole.sh --detector synthetic              # no yolo: the true position projected, with noise
 sim/run_pole.sh --rain 0.6 --fog 0.2              # airsim's weather
 sim/run_pole.sh --no-gps --no-imu                 # camera and uwb only
+sim/run_pole.sh --rviz                            # watch it in rviz2 (sim/rviz/pole.rviz)
 ```
 
 `run_pole.sh` builds yolo_ros into `build-ros/colcon` and `pole_tracking_sim`
 into `build-ros/` in the `ros2` distrobox (ros 2 jazzy; the yolo environment
 is shared with it; `sim/build.sh`), starts unreal and then the launch file:
-airsim's ros 2 node, the detector, the program, which prints the fused error
+airsim's ros 2 node, the autopilot, the detector, the program, which prints the fused error
 every second, and a recorder. the run is recorded into
 `build-ros/runs/pole-<scenario>-<detector>-<time>` and scored at the end by
 localization_core's `airsim/evaluate.py` (evo): the fused estimate
 (`/pole/fused`), the camera ray at the uwb distance (`/pole/ray_uwb`) and
 the raw gps (`/pole/gps`) against the true pose. the detector logs to the
-ros log (`~/.ros/log/latest/`). watch with rviz2 (fixed frame `enu`,
-`/pole/markers`) and `rqt_image_view /pole/dbg_image`. `DETECTOR_IMGSZ` sets the yolo
-input width (default 1280). the options are `pole_tracking_sim`'s ros 2
-parameters (`--uwb-noise 0.2` becomes `uwb_noise:=0.2`):
+ros log (`~/.ros/log/latest/`). `--rviz` shows the estimates (arrows along
+the estimated velocity), the true `drone` frame and the camera image with
+yolo's boxes (`/pole/dbg_image`). `DETECTOR_IMGSZ` sets the yolo input width
+(default 1280). the options are ros 2 parameters (`--uwb-noise 0.2` becomes
+`uwb_noise:=0.2`): `pole_tracking_sim`'s, defined in
+`sim/src/pole_tracking_sim_parameters.yaml` with
+[generate_parameter_library](https://github.com/PickNikRobotics/generate_parameter_library),
+and the autopilot's (`--radius`, `--altitude`, `--altitude-swing`):
 
 | option | default | |
 |---|---|---|
@@ -110,7 +117,8 @@ parameters (`--uwb-noise 0.2` becomes `uwb_noise:=0.2`):
 | `--uwb-noise m` | 0.1 | uwb range noise |
 | `--gps-noise m` | 1.5 | white gps position noise |
 | `--latency s` | 0.4 | fuse measurements this far behind the simulation |
-| `--duration s` | forever | stop after this much simulated time |
+| `--duration s` | forever | stop after this much simulated flight time |
+| `--rviz` | | rviz2 with `sim/rviz/pole.rviz` |
 | `--radius m` | 8 | figure-eight loop radius |
 | `--altitude m` | 8 | cruise height above the ground |
 | `--altitude-swing m` | 3 | how far it climbs and descends around the cruise height |

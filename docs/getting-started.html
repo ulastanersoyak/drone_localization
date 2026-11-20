@@ -68,7 +68,7 @@ cd drone_localization</code></pre>
 git -c protocol.file.allow=always submodule update --init</code></pre>
 
 <h2>2. build and test the filter</h2>
-<p>The estimator is header-only and needs no simulator: CMake ≥ 3.22, a C++20 compiler, Eigen and GeographicLib (Fedora <code>eigen3-devel GeographicLib-devel</code>, Ubuntu <code>libeigen3-dev libgeographiclib-dev</code>).</p>
+<p>The estimator is header-only and needs no simulator: CMake ≥ 3.22, a C++20 compiler, Eigen, GeographicLib and GoogleTest (Fedora <code>eigen3-devel GeographicLib-devel gtest-devel</code>, Ubuntu <code>libeigen3-dev libgeographiclib-dev libgtest-dev</code>).</p>
 <pre><code>cmake -S . -B build
 cmake --build build -j
 ctest --test-dir build --output-on-failure</code></pre>
@@ -95,13 +95,14 @@ airsim/setup.sh</code></pre>
 sim/run_pole.sh --no-gui --duration 120          # no window
 sim/run_pole.sh --scenario antwerp --rain 0.6    # among Antwerp's buildings, in rain
 sim/run_pole.sh --detector synthetic             # no YOLO: the true position projected, with noise
-sim/run_pole.sh --no-gps --no-imu                # camera and uwb only</code></pre>
-<p><code>run_pole.sh</code> builds yolo_ros and <code>pole_tracking_sim</code> in the box (<code>sim/build.sh</code>), starts Unreal, then one ROS 2 launch file: AirSim's ROS 2 node (which renders and turns the pole camera), the detector, <code>pole_tracking_sim</code> and a recorder. The drone waits on the ground until the detector's first detection, then flies. Every second the program prints the current error; at the end the recording is scored against AirSim's true pose with <a href="https://github.com/MichaelGrupp/evo">evo</a>.</p>
-<p>Watch it with <code>rviz2</code> (fixed frame <code>enu</code>, topic <code>/pole/markers</code>) and the detections with <code>rqt_image_view /pole/dbg_image</code>. Each run is kept in <code>build-ros/runs/</code>; plot one with evo:</p>
+sim/run_pole.sh --no-gps --no-imu                # camera and uwb only
+sim/run_pole.sh --rviz                           # with rviz2</code></pre>
+<p><code>run_pole.sh</code> builds yolo_ros and <code>pole_tracking_sim</code> in the box (<code>sim/build.sh</code>), starts Unreal, then one ROS 2 launch file: AirSim's ROS 2 node (which renders and turns the pole camera), the autopilot (localization_core's <code>airsim/autopilot.py</code>), the detector, <code>pole_tracking_sim</code> and a recorder. The drone waits on the ground until the detector's first detection, then flies. Every second the program prints the current error; at the end the recording is scored against AirSim's true pose with <a href="https://github.com/MichaelGrupp/evo">evo</a>.</p>
+<p>With <code>--rviz</code>, rviz2 opens <code>sim/rviz/pole.rviz</code>: the fused estimate (green arrow, along the estimated velocity), the camera ray at the UWB distance (orange), the noisy GPS fix (yellow), the true <code>drone</code> frame, and the camera image with YOLO's boxes. Each run is kept in <code>build-ros/runs/</code>; plot one with evo:</p>
 <pre><code>distrobox enter ros2 -- bash -c '. /opt/ros/jazzy/setup.bash &amp;&amp; external/localization_core/airsim/.venv/bin/evo_traj \
     bag2 build-ros/runs/&lt;run&gt; /pole/fused --ref /tf:enu.drone --plot'</code></pre>
 <h3>things to try</h3>
-<p>The options are <code>pole_tracking_sim</code>'s ROS parameters, written <code>--name value</code>.</p>
+<p>The options are ROS parameters, written <code>--name value</code>: <code>pole_tracking_sim</code>'s (defined in <code>sim/src/pole_tracking_sim_parameters.yaml</code>) and the autopilot's (<code>--radius</code>, <code>--altitude</code>, <code>--altitude-swing</code>).</p>
 <table>
 <tr><th>command</th><th>what you learn</th></tr>
 <tr><td><code>--no-gps --no-imu</code></td><td>what the pole alone can do: pure range + bearing</td></tr>
